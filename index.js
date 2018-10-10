@@ -31,7 +31,7 @@ function start(config) {
             }, function(socket) {
                 socket.setTimeout(config.socketTimeout)
                 debug('new tls socket')
-                const hash = getHash(socket.remoteAddress)
+                const hash = getHash(socket.remoteAddress || '')
                 workers[hash % cpuNumber].send('https', socket)
             }).listen(https.port, https.host)
             debug('listen to', https.port, https.host)
@@ -44,7 +44,7 @@ function start(config) {
             }, function(socket) {
                 socket.setTimeout(config.socketTimeout)
                 debug('new socket')
-                const hash = getHash(socket.remoteAddress)
+                const hash = getHash(socket.remoteAddress || '')
                 workers[hash % cpuNumber].send('http', socket)
             }).listen(http.port, http.host)
             debug('listen to', http.port, http.host)
