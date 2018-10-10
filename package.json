@@ -1,5 +1,5 @@
 {
-    "name": "load_balance",
+    "name": "fast_load_balance",
     "version": "1.0.0",
     "description": "Load Balance",
     "main": "index.js",
