@@ -35,7 +35,6 @@ class SocketRequest {
         socket.on('close', this.onSocketClose.bind(this))
         socket.on('timeout', this.onSocketTimeout.bind(this))
         socket.setTimeout(config.socketTimeout)
-        socket.setKeepAlive(true, config.keepAliveTimeout)
 
         return this
     }

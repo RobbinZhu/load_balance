@@ -1,3 +1,5 @@
+"use strict;"
+
 const cluster = require('cluster')
 const net = require('net')
 const util = require('util')
@@ -6,6 +8,82 @@ const debug = util.debuglog('load_balance')
 const cpuNumber = require('os').cpus().length
 const SocketParser = require('./lb_socket_parser')
 const TLSSocketParser = require('./lb_tls_socket_parser')
+
+const OCSPRequestBuffer = new Buffer('1')
+
+function clearSocket(socket) {
+    if (socket) {
+        socket.destroySoon()
+    }
+}
+
+function send404(socket) {
+    if (socket) {
+        const random = 'Load Balance can not find resource ' + Math.random().toString()
+        socket.write('HTTP/1.1 404 Not Found\r\nconnection: close\r\ncontent-length: ' + random.length.toString(16) + '\r\n\r\n' + random)
+    }
+}
+
+function proxyRequest(server, socket, bytesRead, header, requestLine, config) {
+    const target = server.targets[getHash(socket.remoteAddress) % server.targets.length]
+    const proxy = net.connect(target, function() {
+        this.setNoDelay(false)
+        for (let i = 0; i < bytesRead.length; i++) {
+            this.write(bytesRead[i])
+        }
+        this.setNoDelay(true)
+    })
+    const isWebsocket = header.hasOwnProperty('connection') && header.connection.toLowerCase() == 'upgrade' &&
+        header.hasOwnProperty('upgrade') && header.upgrade == 'websocket'
+
+    proxy.setTimeout(isWebsocket ? config.websocketTimeout : config.socketTimeout)
+
+    proxy.on('data', function(data) {
+        isWebsocket || socket.setTimeout(config.socketTimeoutIncrease)
+    })
+    proxy.on('error', function(e) {
+        debug('proxy error', e)
+        const random = 'Load Balance Error ' + Math.random().toString()
+        socket.write('HTTP/1.1 500 Server Error\r\nconnection: close\r\ncontent-length: ' + random.length.toString(16) + '\r\n\r\n' + random)
+        clearSocket(socket)
+        clearSocket(proxy)
+    })
+    socket.on('error', function(e) {
+        debug('req error', e)
+        clearSocket(proxy)
+        clearSocket(socket)
+    })
+    socket.on('close', function(e) {
+        debug('req close', e)
+        clearSocket(proxy)
+    })
+    proxy.on('close', function(e) {
+        debug('proxy close', e)
+        clearSocket(socket)
+    })
+    socket.on('end', function(e) {
+        debug('req end', e)
+        clearSocket(proxy)
+    })
+    proxy.on('end', function(e) {
+        debug('proxy end', e)
+        clearSocket(socket)
+    })
+    socket.on('timeout', function(e) {
+        //manual close
+        debug('req timeout', e)
+        clearSocket(socket)
+        clearSocket(proxy)
+    })
+    proxy.on('timeout', function(e) {
+        //manual close
+        debug('proxy timeout', e)
+        clearSocket(socket)
+        clearSocket(proxy)
+    })
+    proxy.pipe(socket)
+    socket.pipe(proxy)
+}
 
 function start(config) {
     function getHash(text) {
@@ -24,96 +102,51 @@ function start(config) {
         cluster.on('exit', (worker, code, signal) => {
             debug('工作进程', worker.process.pid, '已退出')
         })
-        config.loadBalanceServers.https.forEach(function(https) {
+        config.loadBalanceServers.https && config.loadBalanceServers.https.forEach(function(https) {
             net.createServer({
                 pauseOnConnect: true,
                 allowHalfOpen: false
             }, function(socket) {
                 socket.setTimeout(config.socketTimeout)
                 debug('new tls socket')
-                const hash = getHash(socket.remoteAddress || '')
+                const hash = getHash(socket.remoteAddress)
                 workers[hash % cpuNumber].send('https', socket)
             }).listen(https.port, https.host)
-            debug('listen to', https.port, https.host)
+            debug('https listen to', https.port, https.host)
         })
 
-        config.loadBalanceServers.http.forEach(function(http) {
+        config.loadBalanceServers.http && config.loadBalanceServers.http.forEach(function(http) {
             net.createServer({
                 pauseOnConnect: true,
                 allowHalfOpen: false
             }, function(socket) {
                 socket.setTimeout(config.socketTimeout)
                 debug('new socket')
-                const hash = getHash(socket.remoteAddress || '')
+                const hash = getHash(socket.remoteAddress)
                 workers[hash % cpuNumber].send('http', socket)
             }).listen(http.port, http.host)
-            debug('listen to', http.port, http.host)
+            debug('http listen to', http.port, http.host)
         })
     } else {
         process.on('request', function(socket, header, requestLine, bytesRead) {
-
-            function clearSocket(socket) {
-                if (socket) {
-                    socket.destroySoon()
-                }
-            }
-
-            function proxyRequest(server, socket) {
-                const proxy = net.connect(server.target, function() {
-                    this.setNoDelay(false)
-                    for (let i = 0; i < bytesRead.length; i++) {
-                        this.write(bytesRead[i])
-                    }
-                    this.setNoDelay(true)
-                })
-                proxy.on('error', function(e) {
-                    debug('error', e)
-                    const random = 'SLB Error ' + Math.random().toString()
-                    socket.write('HTTP/1.1 500 Server Error\r\nconnection: close\r\ncontent-length: ' + random.length.toString(16) + '\r\n\r\n' + random)
-                    clearSocket(socket)
-                })
-                socket.on('error', function(e) {
-                    debug('req error', e)
-                    clearSocket(proxy)
-                })
-                socket.on('close', function(e) {
-                    debug('req close', e)
-                    clearSocket(proxy)
-                })
-                proxy.on('data', function(data) {
-                    socket.setTimeout(config.socketTimeoutIncrease)
-                })
-                proxy.on('end', function(e) {
-                    debug('end', e)
-                    clearSocket(socket)
-                })
-                proxy.on('timeout', function(e) {
-                    debug('timeout', e)
-                    clearSocket(socket)
-                })
-                proxy.on('close', function(e) {
-                    debug('close', e)
-                    clearSocket(socket)
-                })
-                proxy.pipe(socket)
-                socket.pipe(proxy)
-            }
-            for (let i = 0; i < config.backendServers.length; i++) {
+            for (let i = 0, j = config.backendServers.length; i < j; i++) {
                 const server = config.backendServers[i]
+                const isUpgrade = header.hasOwnProperty('connection') && header.connection.toLowerCase() == 'upgrade'
+                const isWebsocket = isUpgrade && header.hasOwnProperty('upgrade') && header.upgrade == 'websocket'
+                const isHttp1 = !isUpgrade
+                const isHttp2 = false
                 if (
-                    ((server.host === header.host) && (server.isHttp == !header.upgrade)) ||
+                    ((server.host === header.host) && (server.isWebsocket == isWebsocket)) ||
                     ((server.host instanceof RegExp) && server.host.test(header.host))
                 ) {
-                    proxyRequest(server, socket)
+                    proxyRequest(server, socket, bytesRead, header, requestLine, config)
                     return
                 }
             }
 
-            const random = 'SLB Error ' + Math.random().toString()
-            socket.write('HTTP/1.1 500 Server Error\r\nconnection: close\r\ncontent-length: ' + random.length.toString(16) + '\r\n\r\n' + random)
+            send404(socket)
             clearSocket(socket)
         })
-        const OCSPRequestBuffer = new Buffer('1')
         process.on('OCSPRequest', function(cert, issuer, callback) {
             /*debug('OCSP Request made.')
             debug("CERT: ", cert)
@@ -131,8 +164,6 @@ function start(config) {
                     break
                 case 'https':
                     parser = TLSSocketParser
-                    break
-                case 'websocket':
                     break
                 default:
                     break
