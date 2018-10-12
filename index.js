@@ -24,8 +24,16 @@ function send404(socket) {
     }
 }
 
+function getHash(text) {
+    let hash = 0
+    for (let i = 0, j = text.length; i < j; i++) {
+        hash += text[i].charCodeAt(0)
+    }
+    return hash
+}
+
 function proxyRequest(server, socket, bytesRead, header, requestLine, config) {
-    const target = server.targets[getHash(socket.remoteAddress) % server.targets.length]
+    const target = server.targets[getHash(socket.remoteAddress || '') % server.targets.length]
     const proxy = net.connect(target, function() {
         this.setNoDelay(false)
         for (let i = 0; i < bytesRead.length; i++) {
@@ -86,13 +94,6 @@ function proxyRequest(server, socket, bytesRead, header, requestLine, config) {
 }
 
 function start(config) {
-    function getHash(text) {
-        let hash = 0
-        for (let i = 0, j = text.length; i < j; i++) {
-            hash += text[i].charCodeAt(0)
-        }
-        return hash
-    }
     if (cluster.isMaster) {
         const workers = []
         for (let i = 0; i < cpuNumber; i++) {
@@ -109,7 +110,7 @@ function start(config) {
             }, function(socket) {
                 socket.setTimeout(config.socketTimeout)
                 debug('new tls socket')
-                const hash = getHash(socket.remoteAddress)
+                const hash = getHash(socket.remoteAddress || '')
                 workers[hash % cpuNumber].send('https', socket)
             }).listen(https.port, https.host)
             debug('https listen to', https.port, https.host)
@@ -122,7 +123,7 @@ function start(config) {
             }, function(socket) {
                 socket.setTimeout(config.socketTimeout)
                 debug('new socket')
-                const hash = getHash(socket.remoteAddress)
+                const hash = getHash(socket.remoteAddress || '')
                 workers[hash % cpuNumber].send('http', socket)
             }).listen(http.port, http.host)
             debug('http listen to', http.port, http.host)
