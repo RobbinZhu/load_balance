@@ -51,8 +51,8 @@ function proxyRequest(server, socket, bytesRead, header, requestLine, config) {
     })
     proxy.on('error', function(e) {
         debug('proxy error', e)
-        const random = 'Load Balance Error ' + Math.random().toString()
-        socket.write('HTTP/1.1 500 Server Error\r\nconnection: close\r\ncontent-length: ' + random.length.toString(16) + '\r\n\r\n' + random)
+            // const random = 'Load Balance Error ' + Math.random().toString()
+            // socket.write('HTTP/1.1 500 Server Error\r\nconnection: close\r\ncontent-length: ' + random.length.toString(16) + '\r\n\r\n' + random)
         clearSocket(socket)
         clearSocket(proxy)
     })
@@ -101,6 +101,11 @@ function start(config) {
         }
 
         cluster.on('exit', (worker, code, signal) => {
+            workers.forEach(function(existed, index, workers) {
+                if (existed === worker) {
+                    workers[i] = cluster.fork()
+                }
+            })
             debug('工作进程', worker.process.pid, '已退出')
         })
         config.loadBalanceServers.https && config.loadBalanceServers.https.forEach(function(https) {
