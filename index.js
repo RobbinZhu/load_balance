@@ -33,7 +33,15 @@ function getHash(text) {
 }
 
 function proxyRequest(server, socket, bytesRead, header, requestLine, config) {
-    const target = server.targets[getHash(socket.remoteAddress || '') % server.targets.length]
+    const targets = server.targets.filter(function(target) {
+        return !target.isDown
+    })
+    if (!targets.length) {
+        send404(socket)
+        clearSocket(socket)
+        return
+    }
+    const target = targets[getHash(socket.remoteAddress || '') % targets.length]
     const proxy = net.connect(target, function() {
         this.setNoDelay(false)
         for (let i = 0; i < bytesRead.length; i++) {
@@ -47,12 +55,10 @@ function proxyRequest(server, socket, bytesRead, header, requestLine, config) {
     proxy.setTimeout(isWebsocket ? config.websocketTimeout : config.socketTimeout)
 
     proxy.on('data', function(data) {
-        isWebsocket || socket.setTimeout(config.socketTimeoutIncrease)
+        socket.setTimeout(isWebsocket ? config.websocketTimeoutIncrease : config.socketTimeoutIncrease)
     })
     proxy.on('error', function(e) {
         debug('proxy error', e)
-            // const random = 'Load Balance Error ' + Math.random().toString()
-            // socket.write('HTTP/1.1 500 Server Error\r\nconnection: close\r\ncontent-length: ' + random.length.toString(16) + '\r\n\r\n' + random)
         clearSocket(socket)
         clearSocket(proxy)
     })
@@ -106,7 +112,7 @@ function start(config) {
                     workers[i] = cluster.fork()
                 }
             })
-            debug('工作进程', worker.process.pid, '已退出')
+            debug('worker', worker.process.pid, 'exit')
         })
         config.loadBalanceServers.https && config.loadBalanceServers.https.forEach(function(https) {
             net.createServer({
@@ -137,10 +143,12 @@ function start(config) {
         process.on('request', function(socket, header, requestLine, bytesRead) {
             for (let i = 0, j = config.backendServers.length; i < j; i++) {
                 const server = config.backendServers[i]
+                if (server.isDown) {
+                    continue
+                }
                 const isUpgrade = header.hasOwnProperty('connection') && header.connection.toLowerCase() == 'upgrade'
                 const isWebsocket = isUpgrade && header.hasOwnProperty('upgrade') && header.upgrade == 'websocket'
                 const isHttp1 = !isUpgrade
-                const isHttp2 = false
                 if (
                     ((server.host === header.host) && (server.isWebsocket == isWebsocket)) ||
                     ((server.host instanceof RegExp) && server.host.test(header.host))

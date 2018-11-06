@@ -1,3 +1,5 @@
+"use strict;"
+
 const tls = require('tls')
 const util = require('util')
 const debug = util.debuglog('load_balance')
