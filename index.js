@@ -25,8 +25,8 @@ function clearSocket(socket) {
 
 function send404(socket) {
     if (socket) {
-        const random = 'Load Balance can not find resource ' + Math.random().toString()
-        socket.write('HTTP/1.1 404 Not Found\r\nconnection: close\r\ncontent-length: ' + random.length.toString(16) + '\r\n\r\n' + random)
+        const random = 'Load Balance can not find resource'
+        socket.write('HTTP/1.1 404 Not Found\r\nconnection: close\r\ncontent-length: ' + random.length + '\r\n\r\n' + random)
     }
 }
 
