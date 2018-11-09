@@ -51,13 +51,8 @@ function get(rawSocket, server, config) {
         server: server,
         requestCert: false,
         rejectUnauthorized: true,
-        handshakeTimeout: config.httpsHandshakeTimeout,
         ALPNProtocols: undefined,
         SNICallback: SNICallback
-    })
-    socket.on('error', function(e) {
-        debug(e)
-        this.destroySoon()
     })
     socket.on('secure', onSocketSecure)
 }

@@ -11,6 +11,12 @@ const TLSSocketParser = require('./lb_tls_socket_parser')
 
 const OCSPRequestBuffer = new Buffer('1')
 
+function socketTimeoutHandler(e) {
+    //manual close
+    debug('socket timeout', e)
+    clearSocket(this)
+}
+
 function clearSocket(socket) {
     if (socket) {
         socket.destroySoon()
@@ -62,6 +68,8 @@ function proxyRequest(server, socket, bytesRead, header, requestLine, config) {
         clearSocket(socket)
         clearSocket(proxy)
     })
+    socket.removeListener('timeout', socketTimeoutHandler)
+    socket.setTimeout(isWebsocket ? config.websocketTimeout : config.socketTimeout)
     socket.on('error', function(e) {
         debug('req error', e)
         clearSocket(proxy)
@@ -169,7 +177,7 @@ function start(config) {
             SocketParser.get(socket, this, config)
         })
         process.on('message', function(message, socket) {
-            socket.setTimeout(config.socketTimeout)
+            socket.setTimeout(config.socketTimeout, socketTimeoutHandler)
             let parser
             switch (message) {
                 case 'http':
