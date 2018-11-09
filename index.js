@@ -109,7 +109,7 @@ function start(config) {
         cluster.on('exit', (worker, code, signal) => {
             workers.forEach(function(existed, index, workers) {
                 if (existed === worker) {
-                    workers[i] = cluster.fork()
+                    workers[index] = cluster.fork()
                 }
             })
             debug('worker', worker.process.pid, 'exit')
