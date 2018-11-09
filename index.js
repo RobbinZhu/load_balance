@@ -119,7 +119,6 @@ function start(config) {
                 pauseOnConnect: true,
                 allowHalfOpen: false
             }, function(socket) {
-                socket.setTimeout(config.socketTimeout)
                 debug('new tls socket')
                 const hash = getHash(socket.remoteAddress || '')
                 workers[hash % cpuNumber].send('https', socket)
@@ -132,7 +131,6 @@ function start(config) {
                 pauseOnConnect: true,
                 allowHalfOpen: false
             }, function(socket) {
-                socket.setTimeout(config.socketTimeout)
                 debug('new socket')
                 const hash = getHash(socket.remoteAddress || '')
                 workers[hash % cpuNumber].send('http', socket)
@@ -171,6 +169,7 @@ function start(config) {
             SocketParser.get(socket, this, config)
         })
         process.on('message', function(message, socket) {
+            socket.setTimeout(config.socketTimeout)
             let parser
             switch (message) {
                 case 'http':

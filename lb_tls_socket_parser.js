@@ -55,6 +55,10 @@ function get(rawSocket, server, config) {
         ALPNProtocols: undefined,
         SNICallback: SNICallback
     })
+    socket.on('error', function(e) {
+        debug(e)
+        this.destroySoon()
+    })
     socket.on('secure', onSocketSecure)
 }
 module.exports = {
