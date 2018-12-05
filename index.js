@@ -4,12 +4,14 @@ const cluster = require('cluster')
 const net = require('net')
 const util = require('util')
 const debug = util.debuglog('load_balance')
+const ocsp = require('ocsp')
+const ocspMap = new Map
+const ocspCache = new ocsp.Cache()
 
 const cpuNumber = require('os').cpus().length
 const SocketParser = require('./lb_socket_parser')
 const TLSSocketParser = require('./lb_tls_socket_parser')
 
-const OCSPRequestBuffer = new Buffer('1')
 
 function socketTimeoutHandler(e) {
     //manual close
@@ -167,11 +169,33 @@ function start(config) {
             send404(socket)
             clearSocket(socket)
         })
-        process.on('OCSPRequest', function(cert, issuer, callback) {
-            /*debug('OCSP Request made.')
-            debug("CERT: ", cert)
-            debug("ISSUER: ", issuer)*/
-            callback(null, OCSPRequestBuffer)
+        process.on('OCSPRequest', function(cert, issuer, cb) {
+            if (!ocspMap[cert]) {
+                ocspMap[cert] = new Promise(function(resolve, reject) {
+                    console.log('init with cert')
+                    ocsp.getOCSPURI(cert, function(err, uri) {
+                        if (err) {
+                            resolve()
+                            return
+                        }
+
+                        const req = ocsp.request.generate(cert, issuer)
+                        const options = {
+                            url: uri,
+                            ocsp: req.data
+                        }
+
+                        ocspCache.request(req.id, options, function(e, buffer) {
+                            resolve(buffer)
+                        })
+                    })
+                })
+            } else {
+                ocspMap[cert].then(function(buffer) {
+                    console.log('callback with cert')
+                    cb(null, buffer)
+                })
+            }
         })
         process.on('https-message', function(message, socket) {
             SocketParser.get(socket, this, config)

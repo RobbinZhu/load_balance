@@ -1,11 +1,13 @@
 {
     "name": "fast_load_balance",
-    "version": "0.0.9",
+    "version": "0.0.10",
     "description": "Load Balance",
     "main": "index.js",
     "scripts": {},
     "author": "",
     "license": "ISC",
-    "dependencies": {},
+    "dependencies": {
+        "ocsp": "^1.2.0"
+    },
     "devDependencies": {}
 }
