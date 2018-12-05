@@ -3,8 +3,10 @@
 const cluster = require('cluster')
 const net = require('net')
 const util = require('util')
-const debug = util.debuglog('load_balance')
+
 const ocsp = require('ocsp')
+const debug = util.debuglog('load_balance')
+
 const ocspMap = new Map
 const ocspCache = new ocsp.Cache()
 
@@ -172,7 +174,7 @@ function start(config) {
         process.on('OCSPRequest', function(cert, issuer, cb) {
             if (!ocspMap[cert]) {
                 ocspMap[cert] = new Promise(function(resolve, reject) {
-                    console.log('init with cert')
+                    debug('init with cert')
                     ocsp.getOCSPURI(cert, function(err, uri) {
                         if (err) {
                             resolve()
@@ -192,7 +194,7 @@ function start(config) {
                 })
             } else {
                 ocspMap[cert].then(function(buffer) {
-                    console.log('callback with cert')
+                    debug('callback with cert')
                     cb(null, buffer)
                 })
             }
